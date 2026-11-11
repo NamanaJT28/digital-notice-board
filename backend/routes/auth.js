@@ -37,6 +37,11 @@ router.post("/register", async (req, res) => {
       if (!(await Department.exists({ _id: department }))) return res.status(400).json({ message: "Department not found" });
     }
 
+    // Only ONE HOD is allowed per department
+    if (role === "hod" && (await User.exists({ role: "hod", department }))) {
+      return res.status(400).json({ message: "An HOD already exists for this department" });
+    }
+
     const user = await User.create({
       name: name.trim(),
       email: email && email.trim() ? email.trim().toLowerCase() : undefined,
@@ -67,16 +72,3 @@ router.post("/login", async (req, res) => {
 
   if (!user || !user.isActive || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({ message: "Invalid email or password" });
-  }
-  if (role && user.role !== role) {
-    const names = { admin: "Principal", hod: "HOD", teacher: "Teacher", student: "Student" };
-    return res.status(403).json({ message: `This account is not a ${names[role]} account. Choose the correct login tab.` });
-  }
-
-  res.json({ token: signToken(user), user: user.toSafeJSON() });
-});
-
-// GET /api/auth/me
-router.get("/me", protect, (req, res) => res.json(req.user.toSafeJSON()));
-
-module.exports = router;
