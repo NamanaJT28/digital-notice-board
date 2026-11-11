@@ -7,16 +7,12 @@ const { protect } = require("../middleware/auth");
 
 const signToken = (user) => jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
 
-// GET /api/auth/setup-status -> tells the register page whether the first Admin account is still needed
+// GET /api/auth/setup-status
 router.get("/setup-status", async (req, res) => {
   res.json({ needsAdmin: !(await User.exists({ role: "admin" })) });
 });
 
-// POST /api/auth/register  -> saves whatever the person typed into MongoDB
-//   student: { name, email, password, department, semester, usn (optional) }
-//   teacher: { name, email, password, department }
-//   hod:     { name, email, password, department }
-//   admin:   { name, email, password }   (only allowed while NO admin exists yet)
+// POST /api/auth/register
 router.post("/register", async (req, res) => {
   try {
     const { name, email, usn, password, role, department, semester } = req.body;
@@ -50,7 +46,7 @@ router.post("/register", async (req, res) => {
       role,
       department: role === "admin" ? undefined : department,
       semester: role === "student" && semester ? Number(semester) : undefined,
-      canPublishCollegeWide: false, // an admin can grant this to a HOD later
+      canPublishCollegeWide: false,
     });
 
     await user.populate("department");
@@ -60,7 +56,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// POST /api/auth/login  { identifier: email, password, role: "admin" | "hod" | "student" }
+// POST /api/auth/login
 router.post("/login", async (req, res) => {
   const { identifier, password, role } = req.body;
   if (!identifier || !password) return res.status(400).json({ message: "Enter USN/Email and password" });
@@ -72,3 +68,16 @@ router.post("/login", async (req, res) => {
 
   if (!user || !user.isActive || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({ message: "Invalid email or password" });
+  }
+  if (role && user.role !== role) {
+    const names = { admin: "Principal", hod: "HOD", teacher: "Teacher", student: "Student" };
+    return res.status(403).json({ message: `This account is not a ${names[role]} account. Choose the correct login tab.` });
+  }
+
+  res.json({ token: signToken(user), user: user.toSafeJSON() });
+});
+
+// GET /api/auth/me
+router.get("/me", protect, (req, res) => res.json(req.user.toSafeJSON()));
+
+module.exports = router;
